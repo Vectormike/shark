@@ -1,35 +1,42 @@
 import { LoanRepository } from '../repositories/LoanRepository';
-import { UserRepository } from '../repositories/UserRepository';
+import { BorrowerRepository } from '../repositories/BorrowerRepository';
 import { Loan, LoanStatus, CreateLoanInput } from '../types/database';
 import { CacheService, CacheKeys } from '../config/redis';
+import { parseLoanFields, parseDecimalFieldsArray } from '../utils/sanitizer';
+import { paymentService } from './PaymentService';
+import { BankService } from './BankService';
 
 export class LoanService {
 	private loanRepository: LoanRepository;
-	private userRepository: UserRepository;
+	private borrowerRepository: BorrowerRepository;
 
 	constructor() {
 		this.loanRepository = new LoanRepository();
-		this.userRepository = new UserRepository();
+		this.borrowerRepository = new BorrowerRepository();
 	}
 
 	// Calculate loan details
 	private calculateLoanDetails(amount: number, interestRate: number, termInMonths: number) {
-		const monthlyInterestRate = interestRate / 100 / 12;
-		const monthlyPayment = (amount * monthlyInterestRate * Math.pow(1 + monthlyInterestRate, termInMonths)) /
-			(Math.pow(1 + monthlyInterestRate, termInMonths) - 1);
-		const totalAmount = monthlyPayment * termInMonths;
+		// Simple interest calculation (more common for personal loans)
+		const totalInterest = (amount * interestRate / 100);
+		const totalAmount = amount + totalInterest;
+		const monthlyPayment = totalAmount / termInMonths;
+		const monthlyInterest = totalInterest / termInMonths;
 
 		return {
-			monthlyPayment: Math.round(monthlyPayment * 100) / 100,
-			totalAmount: Math.round(totalAmount * 100) / 100,
-			remainingBalance: amount
+			monthly_payment: Math.round(monthlyPayment * 100) / 100,
+			total_amount: Math.round(totalAmount * 100) / 100,
+			total_interest: Math.round(totalInterest * 100) / 100,
+			monthly_interest: Math.round(monthlyInterest * 100) / 100,
+			outstanding_balance: amount
 		};
 	}
+
 
 	// Create a new loan
 	async createLoan(data: CreateLoanInput): Promise<Loan> {
 		// Validate borrower exists
-		const borrower = await this.userRepository.findBorrowerById(data.borrower_id);
+		const borrower = await this.borrowerRepository.findBorrowerById(data.borrower_id);
 		if (!borrower || !borrower.is_active) {
 			throw new Error('Borrower not found or inactive');
 		}
@@ -43,7 +50,7 @@ export class LoanService {
 
 		// Create loan
 		const loan = await this.loanRepository.create({
-			user_id: data.borrower_id,
+			borrower_id: data.borrower_id,
 			amount: data.amount,
 			interest_rate: data.interest_rate,
 			term_in_months: data.term_in_months,
@@ -56,7 +63,7 @@ export class LoanService {
 		await CacheService.delete(CacheKeys.USER_LOANS(data.borrower_id));
 		await CacheService.delete(CacheKeys.BORROWER_LOANS(data.borrower_id));
 
-		return loan;
+		return parseLoanFields(loan);
 	}
 
 	// Get all loans with borrower information
@@ -84,7 +91,7 @@ export class LoanService {
 		});
 
 		return {
-			loans: result.data,
+			loans: parseDecimalFieldsArray(result.data),
 			pagination: {
 				page,
 				limit,
@@ -99,7 +106,7 @@ export class LoanService {
 		// Try cache first
 		const cachedLoan = await CacheService.get(CacheKeys.LOAN_DETAILS(id));
 		if (cachedLoan) {
-			return cachedLoan;
+			return parseLoanFields(cachedLoan);
 		}
 
 		const loan = await this.loanRepository.findLoanWithBorrowerById(id);
@@ -107,10 +114,13 @@ export class LoanService {
 			throw new Error('Loan not found');
 		}
 
-		// Cache for 5 minutes
-		await CacheService.set(CacheKeys.LOAN_DETAILS(id), loan, 300);
+		// Parse decimal fields
+		const parsedLoan = parseLoanFields(loan);
 
-		return loan;
+		// Cache for 5 minutes
+		await CacheService.set(CacheKeys.LOAN_DETAILS(id), parsedLoan, 300);
+
+		return parsedLoan;
 	}
 
 	// Update loan
@@ -143,8 +153,8 @@ export class LoanService {
 
 		// Clear cache
 		await CacheService.delete(CacheKeys.LOAN_DETAILS(id));
-		await CacheService.delete(CacheKeys.USER_LOANS(existingLoan.user_id));
-		await CacheService.delete(CacheKeys.BORROWER_LOANS(existingLoan.user_id));
+		await CacheService.delete(CacheKeys.USER_LOANS(existingLoan.borrower_id));
+		await CacheService.delete(CacheKeys.BORROWER_LOANS(existingLoan.borrower_id));
 
 		return updatedLoan;
 	}
@@ -166,8 +176,8 @@ export class LoanService {
 
 		// Clear cache
 		await CacheService.delete(CacheKeys.LOAN_DETAILS(id));
-		await CacheService.delete(CacheKeys.USER_LOANS(existingLoan.user_id));
-		await CacheService.delete(CacheKeys.BORROWER_LOANS(existingLoan.user_id));
+		await CacheService.delete(CacheKeys.USER_LOANS(existingLoan.borrower_id));
+		await CacheService.delete(CacheKeys.BORROWER_LOANS(existingLoan.borrower_id));
 	}
 
 	// Approve loan
@@ -177,27 +187,160 @@ export class LoanService {
 			throw new Error('Loan not found');
 		}
 
-		// Clear cache
 		await CacheService.delete(CacheKeys.LOAN_DETAILS(id));
-		await CacheService.delete(CacheKeys.USER_LOANS(loan.user_id));
-		await CacheService.delete(CacheKeys.BORROWER_LOANS(loan.user_id));
+		await CacheService.delete(CacheKeys.USER_LOANS(loan.borrower_id));
+		await CacheService.delete(CacheKeys.BORROWER_LOANS(loan.borrower_id));
 
-		return loan;
+		return parseLoanFields(loan);
 	}
 
-	// Disburse loan
-	async disburseLoan(id: string): Promise<Loan> {
-		const loan = await this.loanRepository.updateStatus(id, LoanStatus.DISBURSED);
+	// Disburse loan with actual money transfer
+	async disburseLoan(id: string, disbursementData: {
+		bank_account: {
+			account_number: string;
+			bank_code?: string; // Optional - will be resolved from bank_name
+			bank_name?: string; // Bank name to resolve bank_code
+			account_name: string;
+		};
+		notes?: string;
+	}): Promise<Loan> {
+		// Get loan details
+		const loan = await this.loanRepository.findById(id);
 		if (!loan) {
 			throw new Error('Loan not found');
 		}
 
-		// Clear cache
-		await CacheService.delete(CacheKeys.LOAN_DETAILS(id));
-		await CacheService.delete(CacheKeys.USER_LOANS(loan.user_id));
-		await CacheService.delete(CacheKeys.BORROWER_LOANS(loan.user_id));
+		if (loan.status !== LoanStatus.APPROVED) {
+			throw new Error('Only approved loans can be disbursed');
+		}
 
-		return loan;
+		// Get borrower details
+		const borrower = await this.borrowerRepository.findBorrowerById(loan.borrower_id);
+		if (!borrower) {
+			throw new Error('Borrower not found');
+		}
+
+		// Validate bank account details
+		const { account_number, bank_code, bank_name, account_name } = disbursementData.bank_account;
+
+		if (!account_number || !account_name) {
+			throw new Error('Account number and account name are required for disbursement');
+		}
+
+		if (!bank_code && !bank_name) {
+			throw new Error('Either bank_code or bank_name is required for disbursement');
+		}
+
+		// Validate account number format
+		if (!BankService.validateAccountNumber(account_number)) {
+			throw new Error('Invalid account number format. Nigerian account numbers must be 10 digits.');
+		}
+
+		// Format account number (remove any non-digits)
+		const formattedAccountNumber = BankService.formatAccountNumber(account_number);
+
+		// Resolve bank code
+		let resolvedBankCode = bank_code;
+
+		if (!resolvedBankCode && bank_name) {
+			// Resolve bank code from bank name using Paystack API
+			try {
+				const banks = await BankService.getSupportedBanks();
+				const bank = banks.find(b =>
+					b.name.toLowerCase().includes(bank_name.toLowerCase()) ||
+					bank_name.toLowerCase().includes(b.name.toLowerCase())
+				);
+
+				if (bank) {
+					resolvedBankCode = bank.code;
+					console.log(`✅ Resolved bank code: ${bank_name} -> ${bank.code}`);
+				} else {
+					throw new Error(`Bank not found: ${bank_name}. Please check the bank name or provide bank_code manually.`);
+				}
+			} catch (error) {
+				throw new Error(`Failed to resolve bank code for ${bank_name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			}
+		}
+
+		// Validate resolved bank code
+		if (!resolvedBankCode) {
+			throw new Error('Failed to resolve bank code. Please provide a valid bank_code or bank_name.');
+		}
+
+		const isValidBankCode = await BankService.validateBankCode(resolvedBankCode);
+		if (!isValidBankCode) {
+			throw new Error(`Invalid bank code: ${resolvedBankCode}. Please use a valid Nigerian bank code.`);
+		}
+
+		// Generate transfer reference
+		const transferReference = `DISB_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+		try {
+			// Check if we're in development mode with simulated transfers
+			const isDevelopment = process.env.NODE_ENV === 'development';
+			const simulateTransfers = process.env.SIMULATE_TRANSFERS === 'true';
+
+			let transferResult;
+
+			if (isDevelopment && simulateTransfers) {
+				// Simulate successful transfer for development
+				console.log('🧪 DEVELOPMENT MODE: Simulating transfer...');
+				transferResult = {
+					success: true,
+					transfer_code: `SIM_${Date.now()}`,
+					reference: transferReference,
+					status: 'success',
+					amount: loan.amount,
+					recipient: {
+						type: 'bank',
+						name: disbursementData.bank_account.account_name,
+						account_number: formattedAccountNumber,
+						bank_code: resolvedBankCode
+					}
+				};
+			} else {
+				// Create actual transfer via payment gateway
+				transferResult = await paymentService.createTransfer({
+					amount: loan.amount,
+					recipient_code: `${resolvedBankCode}_${formattedAccountNumber}`,
+					reference: transferReference,
+					reason: disbursementData.notes || `Loan disbursement for ${borrower.first_name} ${borrower.last_name}`,
+					currency: 'NGN',
+					account_name: disbursementData.bank_account.account_name
+				});
+
+				if (!transferResult.success) {
+					throw new Error(`Transfer failed: ${transferResult.status}`);
+				}
+			}
+
+			// Update loan status to DISBURSED
+			const updatedLoan = await this.loanRepository.updateStatus(id, LoanStatus.DISBURSED);
+			if (!updatedLoan) {
+				throw new Error('Failed to update loan status');
+			}
+
+			// Clear cache
+			await CacheService.delete(CacheKeys.LOAN_DETAILS(id));
+			await CacheService.delete(CacheKeys.USER_LOANS(loan.borrower_id));
+			await CacheService.delete(CacheKeys.BORROWER_LOANS(loan.borrower_id));
+
+			// Log disbursement details
+			console.log(`💰 Loan disbursed successfully:`, {
+				loanId: id,
+				amount: loan.amount,
+				borrower: `${borrower.first_name} ${borrower.last_name}`,
+				transferReference: transferResult.reference,
+				transferCode: transferResult.transfer_code,
+				status: transferResult.status
+			});
+
+			return parseLoanFields(updatedLoan);
+
+		} catch (error) {
+			console.error('Disbursement failed:', error);
+			throw new Error(`Disbursement failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		}
 	}
 
 	// Get loan statistics

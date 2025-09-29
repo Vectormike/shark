@@ -7,7 +7,8 @@ import {
 	deleteLoan,
 	approveLoan,
 	disburseLoan,
-	processRepayment
+	processRepayment,
+	getSupportedBanks
 } from '../controllers/loanController';
 import { authenticateToken } from '../middleware/auth';
 import { loanValidator } from '../validators';
@@ -43,12 +44,18 @@ router.patch('/:id/approve',
 );
 router.patch('/:id/disburse',
 	loanValidator.validateLoanId,
+	loanValidator.validateDisbursement,
 	disburseLoan
 );
 router.post('/:id/repayment',
 	loanValidator.validateLoanId,
 	loanValidator.validateRepayment,
 	processRepayment
+);
+
+// Get supported banks for disbursement
+router.get('/banks',
+	getSupportedBanks
 );
 
 export default router;

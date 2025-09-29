@@ -1,6 +1,8 @@
 import { BorrowerRepository } from '../repositories/BorrowerRepository';
 import { Borrower } from '../types/database';
 import { CacheService, CacheKeys } from '../config/redis';
+import { db } from '../config/database';
+
 
 export class BorrowerService {
 	private borrowerRepository: BorrowerRepository;
@@ -40,12 +42,10 @@ export class BorrowerService {
 			}
 		}
 
-		// Create borrower
 		const borrower = await this.borrowerRepository.create({
 			...data
 		});
 
-		// Clear borrowers cache
 		await CacheService.delete(CacheKeys.ALL_BORROWERS);
 
 		return borrower;
@@ -56,6 +56,7 @@ export class BorrowerService {
 		page?: number;
 		limit?: number;
 		search?: string;
+		includeInactive?: boolean;
 	} = {}): Promise<{
 		borrowers: Borrower[];
 		pagination: {
@@ -65,17 +66,22 @@ export class BorrowerService {
 			pages: number;
 		};
 	}> {
-		const { page = 1, limit = 20, search } = options;
+		const { page = 1, limit = 20, search, includeInactive = false } = options;
 
-		// Try cache first
-		const cacheKey = CacheKeys.ALL_BORROWERS + `_${page}_${limit}_${search || ''}`;
+		// Try cache first (only for active borrowers)
+		const cacheKey = CacheKeys.ALL_BORROWERS + `_${page}_${limit}_${search || ''}_${includeInactive}`;
 		const cachedBorrowers = await CacheService.get(cacheKey);
 
 		if (cachedBorrowers) {
 			return cachedBorrowers;
 		}
 
-		const result = await this.borrowerRepository.findBorrowers({ page, limit, search });
+		const result = await this.borrowerRepository.findBorrowers({
+			page,
+			limit,
+			search,
+			includeInactive
+		});
 
 		const response = {
 			borrowers: result.data,
@@ -147,20 +153,70 @@ export class BorrowerService {
 		return updatedBorrower;
 	}
 
-	// Deactivate borrower
-	async deactivateBorrower(id: string): Promise<void> {
+	// Check if borrower has active loans
+	private async checkActiveLoans(borrowerId: string): Promise<number> {
+		const activeStatuses = ['PENDING', 'APPROVED', 'DISBURSED', 'ACTIVE'];
+
+		const result = await db('loans')
+			.where('borrower_id', borrowerId)
+			.whereIn('status', activeStatuses)
+			.count('* as count')
+			.first();
+
+		return Number(result?.count || 0);
+	}
+
+	async deactivateBorrower(id: string, reason?: string): Promise<void> {
 		const borrower = await this.borrowerRepository.findBorrowerById(id);
 		if (!borrower) {
 			throw new Error('Borrower not found');
 		}
 
-		// Check if borrower has active loans (this would need to be implemented in LoanService)
-		// For now, we'll just delete the borrower record
-		await this.borrowerRepository.delete(id);
+		if (!borrower.is_active) {
+			throw new Error('Borrower is already deactivated');
+		}
+
+		const activeLoanCount = await this.checkActiveLoans(id);
+		if (activeLoanCount > 0) {
+			throw new Error(`Cannot deactivate borrower with ${activeLoanCount} active loan(s). Please close all active loans first.`);
+		}
+
+		await this.borrowerRepository.update(id, {
+			is_active: false,
+			deactivated_at: new Date(),
+			deactivation_reason: reason
+		});
+
+		await CacheService.delete(CacheKeys.BORROWER_DETAILS(id));
+		await CacheService.delete(CacheKeys.ALL_BORROWERS);
+	}
+
+	// Reactivate borrower
+	async reactivateBorrower(id: string): Promise<Borrower> {
+		const borrower = await this.borrowerRepository.findBorrowerById(id);
+		if (!borrower) {
+			throw new Error('Borrower not found');
+		}
+
+		if (borrower.is_active) {
+			throw new Error('Borrower is already active');
+		}
+
+		const updatedBorrower = await this.borrowerRepository.update(id, {
+			is_active: true,
+			deactivated_at: undefined,
+			deactivation_reason: undefined
+		});
+
+		if (!updatedBorrower) {
+			throw new Error('Failed to reactivate borrower');
+		}
 
 		// Clear cache
 		await CacheService.delete(CacheKeys.BORROWER_DETAILS(id));
 		await CacheService.delete(CacheKeys.ALL_BORROWERS);
+
+		return updatedBorrower;
 	}
 
 	// Search borrowers

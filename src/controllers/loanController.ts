@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { LoanService } from '../services/LoanService';
 import { PaymentMethod } from '../types/database';
 import { paymentService, generatePaymentReference } from '../services/PaymentService';
+import { BankService } from '../services/BankService';
 import { db } from '../config/database';
 
 const loanService = new LoanService();
@@ -139,8 +140,9 @@ export const approveLoan = async (req: Request, res: Response) => {
 export const disburseLoan = async (req: Request, res: Response) => {
 	try {
 		const { id } = req.params;
+		const disbursementData = req.body; // Optional disbursement data
 
-		const loan = await loanService.disburseLoan(id);
+		const loan = await loanService.disburseLoan(id, disbursementData);
 
 		res.json({
 			success: true,
@@ -193,7 +195,7 @@ export const processRepayment = async (req: Request, res: Response) => {
 			callback_url: `${process.env.APP_URL}/api/payments/callback`,
 			metadata: {
 				loan_id: loanId,
-				user_id: loan.user_id,
+				borrower_id: loan.borrower_id,
 				type: 'repayment'
 			}
 		});
@@ -213,7 +215,7 @@ export const processRepayment = async (req: Request, res: Response) => {
 		const [repayment] = await db('repayments')
 			.insert({
 				loan_id: loanId,
-				user_id: loan.user_id,
+				borrower_id: loan.borrower_id,
 				amount,
 				principal_amount: principalAmount,
 				interest_amount: interestAmount,
@@ -238,6 +240,25 @@ export const processRepayment = async (req: Request, res: Response) => {
 		res.status(500).json({
 			success: false,
 			message: 'Internal server error'
+		});
+	}
+};
+
+// Get supported banks for disbursement
+export const getSupportedBanks = async (req: Request, res: Response) => {
+	try {
+		const banks = await BankService.getSupportedBanks();
+
+		res.json({
+			success: true,
+			message: 'Supported banks retrieved successfully',
+			data: { banks }
+		});
+	} catch (error) {
+		console.error('Get banks error:', error);
+		res.status(500).json({
+			success: false,
+			message: error instanceof Error ? error.message : 'Internal server error'
 		});
 	}
 };

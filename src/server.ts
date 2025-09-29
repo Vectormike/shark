@@ -13,6 +13,7 @@ import authRoutes from './routes/auth';
 import loanRoutes from './routes/loans';
 import borrowerRoutes from './routes/borrowers';
 import twoFactorRoutes from './routes/twoFactor';
+import webhookRoutes from './routes/webhooks';
 import { testConnection } from './config/database';
 import { connectRedis } from './config/redis';
 
@@ -31,6 +32,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/borrowers', borrowerRoutes);
 app.use('/api/2fa', twoFactorRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

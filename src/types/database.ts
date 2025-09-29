@@ -53,7 +53,7 @@ export interface Borrower {
 
 export interface Loan {
   id: string;
-  user_id: string;
+  borrower_id: string;
   amount: number;
   interest_rate: number;
   term_in_months: number;
@@ -63,7 +63,9 @@ export interface Loan {
   // Calculated fields
   monthly_payment: number;
   total_amount: number;
-  remaining_balance: number;
+  total_interest: number;
+  monthly_interest: number;
+  outstanding_balance: number;
 
   // Important dates
   applied_at: Date;
@@ -78,7 +80,7 @@ export interface Loan {
 export interface Repayment {
   id: string;
   loan_id: string;
-  user_id: string;
+  borrower_id: string;
   amount: number;
   principal_amount: number;
   interest_amount: number;

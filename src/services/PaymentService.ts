@@ -4,6 +4,8 @@ import {
   PaymentInitializationData,
   PaymentVerificationResponse,
   PaymentRefundData,
+  TransferData,
+  TransferResponse,
   PaymentProvider
 } from '../integrations/payment';
 
@@ -28,6 +30,16 @@ export class PaymentService {
   // Refund payment
   async refundPayment(data: PaymentRefundData) {
     return await this.integration.refundPayment(data);
+  }
+
+  // Create transfer (disburse loan)
+  async createTransfer(data: TransferData): Promise<TransferResponse> {
+    return await this.integration.createTransfer(data);
+  }
+
+  // Verify transfer
+  async verifyTransfer(reference: string): Promise<TransferResponse> {
+    return await this.integration.verifyTransfer(reference);
   }
 
   // Switch payment provider
@@ -71,6 +83,8 @@ export const paymentService = {
   get initializePayment() { return getPaymentService().initializePayment.bind(getPaymentService()); },
   get verifyPayment() { return getPaymentService().verifyPayment.bind(getPaymentService()); },
   get refundPayment() { return getPaymentService().refundPayment.bind(getPaymentService()); },
+  get createTransfer() { return getPaymentService().createTransfer.bind(getPaymentService()); },
+  get verifyTransfer() { return getPaymentService().verifyTransfer.bind(getPaymentService()); },
   get switchProvider() { return getPaymentService().switchProvider.bind(getPaymentService()); },
   get getCurrentProvider() { return getPaymentService().getCurrentProvider.bind(getPaymentService()); }
 };

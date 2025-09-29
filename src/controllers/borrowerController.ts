@@ -8,7 +8,7 @@ export const createBorrower = async (req: Request, res: Response) => {
 	try {
 		const borrowerData = {
 			...req.body,
-			created_by: req.user?.userId // Admin who created this borrower
+			created_by: req.user?.userId
 		};
 
 		const borrower = await borrowerService.createBorrower(borrowerData);
@@ -97,8 +97,9 @@ export const updateBorrower = async (req: Request, res: Response) => {
 export const deactivateBorrower = async (req: Request, res: Response) => {
 	try {
 		const { id } = req.params;
+		const { reason } = req.body;
 
-		await borrowerService.deactivateBorrower(id);
+		await borrowerService.deactivateBorrower(id, reason);
 
 		res.json({
 			success: true,
@@ -106,6 +107,27 @@ export const deactivateBorrower = async (req: Request, res: Response) => {
 		});
 	} catch (error) {
 		console.error('Deactivate borrower error:', error);
+		res.status(400).json({
+			success: false,
+			message: error instanceof Error ? error.message : 'Internal server error'
+		});
+	}
+};
+
+// Reactivate borrower (admin only)
+export const reactivateBorrower = async (req: Request, res: Response) => {
+	try {
+		const { id } = req.params;
+
+		const borrower = await borrowerService.reactivateBorrower(id);
+
+		res.json({
+			success: true,
+			message: 'Borrower reactivated successfully',
+			data: { borrower }
+		});
+	} catch (error) {
+		console.error('Reactivate borrower error:', error);
 		res.status(400).json({
 			success: false,
 			message: error instanceof Error ? error.message : 'Internal server error'

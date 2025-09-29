@@ -3,7 +3,9 @@ import {
 	PaymentInitializationData,
 	PaymentVerificationResponse,
 	PaymentRefundData,
-	PaymentGatewayResponse
+	PaymentGatewayResponse,
+	TransferData,
+	TransferResponse
 } from './types';
 
 // Abstract Payment Gateway class
@@ -25,6 +27,8 @@ export abstract class BasePaymentGateway {
 	abstract initializePayment(data: PaymentInitializationData): Promise<PaymentGatewayResponse>;
 	abstract verifyPayment(reference: string): Promise<PaymentVerificationResponse>;
 	abstract refundPayment(data: PaymentRefundData): Promise<PaymentGatewayResponse>;
+	abstract createTransfer(data: TransferData): Promise<TransferResponse>;
+	abstract verifyTransfer(reference: string): Promise<TransferResponse>;
 
 	// Common utility methods
 	protected handleError(error: any, operation: string): PaymentGatewayResponse {

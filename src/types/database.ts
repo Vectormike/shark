@@ -44,6 +44,9 @@ export interface Borrower {
   address?: string;
   notes?: string;
   created_by: string;
+  is_active: boolean;
+  deactivated_at?: Date;
+  deactivation_reason?: string;
   created_at: Date;
   updated_at: Date;
 }

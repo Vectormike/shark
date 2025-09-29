@@ -1,0 +1,62 @@
+{
+  "name": "loan-shark-app",
+  "version": "1.0.0",
+  "description": "A comprehensive loan management application with TypeScript, PostgreSQL, Redis, and payment integration",
+  "main": "build/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.ts",
+    "build": "tsc",
+    "start": "node build/server.js",
+    "start:dev": "ts-node src/server.ts",
+    "db:migrate": "node -e \"require('./build/utils/migrate.js').runMigrations()\"",
+    "db:migrate:status": "node build/utils/migrate.js status",
+    "db:migrate:rollback": "node build/utils/migrate.js rollback",
+    "db:seed": "node -e \"require('./build/database/seeds/index.js').runSeeds()\"",
+    "setup:admin": "node -e \"require('./build/utils/setupAdmin.js').createAdminUser()\"",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"Linting not configured yet\"",
+    "clean": "rm -rf build"
+  },
+  "keywords": [
+    "loan",
+    "fintech",
+    "typescript",
+    "nodejs",
+    "postgresql",
+    "redis",
+    "paystack",
+    "flutterwave"
+  ],
+  "author": "Victor Jonah",
+  "license": "MIT",
+  "packageManager": "pnpm@10.17.1",
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.15.5",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.5",
+    "@types/speakeasy": "^2.0.10",
+    "axios": "^1.12.2",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "morgan": "^1.10.1",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "redis": "^5.8.2",
+    "speakeasy": "^2.0.0"
+  }
+}

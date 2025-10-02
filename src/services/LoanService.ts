@@ -211,7 +211,7 @@ export class LoanService {
 		}
 
 		if (loan.status !== LoanStatus.APPROVED) {
-			throw new Error('Only approved loans can be disbursed');
+			throw new Error('Only pending loans can be disbursed');
 		}
 
 		// Get borrower details

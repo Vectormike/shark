@@ -50,16 +50,16 @@ Before running this application, make sure you have the following installed:
    ```bash
    cp .env.example .env
    ```
-   
+
    Update the `.env` file with your database credentials, Redis configuration, and API keys.
 
 4. **Database Setup**
-   
+
    Create a PostgreSQL database:
    ```bash
    createdb loan_shark_db
    ```
-   
+
    Run the database migration:
    ```bash
    psql -d loan_shark_db -f src/database/migrations/001_initial_schema.sql
@@ -76,6 +76,9 @@ Before running this application, make sure you have the following installed:
 - `pnpm build` - Build the application for production
 - `pnpm start` - Start production server
 - `pnpm start:dev` - Start development server without hot reload
+- `pnpm test` - Run test suite
+- `pnpm test:watch` - Run tests in watch mode
+- `pnpm test:coverage` - Run tests with coverage report
 
 ## API Endpoints
 
@@ -96,6 +99,10 @@ Before running this application, make sure you have the following installed:
 - `PUT /api/loans/:id` - Update loan (requires auth, pending loans only)
 - `DELETE /api/loans/:id` - Delete loan (requires auth, pending loans only)
 - `POST /api/loans/:id/repayment` - Process loan repayment (requires auth)
+
+### Webhooks
+- `POST /api/webhooks/paystack` - Paystack webhook endpoint
+- `POST /api/webhooks/flutterwave` - Flutterwave webhook endpoint
 
 ### Health Check
 - `GET /health` - API health status
@@ -134,6 +141,22 @@ The app supports both Paystack and Flutterwave:
 - Set `PAYMENT_PROVIDER=paystack` or `PAYMENT_PROVIDER=flutterwave` in your `.env`
 - Configure the respective API keys
 - Payments are initialized via the repayment endpoints
+
+### Webhook Configuration
+
+The application handles webhooks from both payment providers:
+
+**Paystack Webhooks:**
+- Endpoint: `POST /api/webhooks/paystack`
+- Events: `transfer.success`, `transfer.failed`, `transfer.reversed`, `charge.success`, `charge.failed`
+- Signature verification using HMAC-SHA512
+
+**Flutterwave Webhooks:**
+- Endpoint: `POST /api/webhooks/flutterwave`
+- Events: `transfer.completed`, `transfer.failed`, `charge.completed`, `charge.failed`
+- Signature verification using HMAC-SHA256
+
+Configure your webhook URLs in the respective payment gateway dashboards to point to your application's webhook endpoints.
 
 ## Development
 

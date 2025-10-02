@@ -67,11 +67,17 @@ export interface Loan {
   monthly_interest: number;
   outstanding_balance: number;
 
+  // Payment gateway fields
+  disbursement_reference?: string;
+  disbursement_gateway_response?: any;
+
   // Important dates
   applied_at: Date;
   approved_at?: Date;
   disbursed_at?: Date;
   due_date?: Date;
+  next_payment_date?: Date;
+  completed_at?: Date;
 
   created_at: Date;
   updated_at: Date;

@@ -87,6 +87,14 @@ export class LoanRepository extends BaseRepository<Loan> {
 			.orderBy('created_at', 'desc');
 	}
 
+	// Find loan by disbursement reference
+	async findByDisbursementReference(reference: string): Promise<Loan | null> {
+		const loan = await db('loans')
+			.where('disbursement_reference', reference)
+			.first();
+		return loan || null;
+	}
+
 	// Update loan status
 	async updateStatus(id: string, status: LoanStatus, additionalData?: Partial<Loan>): Promise<Loan | null> {
 		const updateData: any = {
@@ -98,6 +106,8 @@ export class LoanRepository extends BaseRepository<Loan> {
 			updateData.approved_at = new Date();
 		} else if (status === LoanStatus.DISBURSED) {
 			updateData.disbursed_at = new Date();
+		} else if (status === LoanStatus.COMPLETED) {
+			updateData.completed_at = new Date();
 		}
 
 		if (additionalData) {

@@ -1,6 +1,10 @@
+import dotenv from 'dotenv';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { pool } from '../config/database';
+
+// Load environment variables
+dotenv.config();
 
 interface MigrationRecord {
 	id: number;
@@ -94,6 +98,34 @@ async function recordMigration(filename: string): Promise<void> {
 export async function rollbackMigration(filename: string): Promise<void> {
 	try {
 		console.log(`🔄 Rolling back migration: ${filename}`);
+
+		// Check if migration was executed
+		const executedMigrations = await getExecutedMigrations();
+		const migration = executedMigrations.find(m => m.filename === filename);
+
+		if (!migration) {
+			throw new Error(`Migration ${filename} has not been executed or does not exist.`);
+		}
+
+		// Look for rollback SQL file
+		const migrationsDir = join(__dirname, '../../src/database/migrations');
+		const rollbackFilename = filename.replace('.sql', '.rollback.sql');
+		const rollbackPath = join(migrationsDir, rollbackFilename);
+
+		try {
+			// Read and execute rollback SQL if it exists
+			const rollbackSQL = readFileSync(rollbackPath, 'utf8');
+			console.log(`📄 Found rollback file: ${rollbackFilename}`);
+			await pool.query(rollbackSQL);
+			console.log(`✅ Executed rollback SQL for: ${filename}`);
+		} catch (fileError: any) {
+			if (fileError.code === 'ENOENT') {
+				console.warn(`⚠️  No rollback file found for ${filename}. Only removing from migrations table.`);
+				console.warn(`⚠️  Expected file: ${rollbackFilename}`);
+			} else {
+				throw fileError;
+			}
+		}
 
 		// Remove from migrations table
 		await pool.query('DELETE FROM migrations WHERE filename = $1', [filename]);

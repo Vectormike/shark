@@ -1,5 +1,9 @@
+import dotenv from 'dotenv';
 import { Pool, PoolConfig } from 'pg';
 import knex, { Knex } from 'knex';
+
+// Load environment variables
+dotenv.config();
 
 // PostgreSQL connection configuration
 const poolConfig: PoolConfig = process.env.DATABASE_URL ? {
